@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Heating MK1 – V4 Smart Thermostat (Public Broker)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- MQTT.js -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+/* ============================================
+   GLOBAL STYLE — SOFT GLASS GRADIENT VERSION
+   ============================================ */
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background: linear-gradient(145deg, #0f131a, #000);
+  color: #fff;
+  text-align: center;
+  overflow-x: hidden;
+}
+
+h1 {
+  margin: 18px 0 10px 0;
+  font-size: 1.5rem;
+  color: #9ee6ff;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(10px);
+  color: #cfefff;
+}
+
+.tab-btn.active {
+  background: #9ee6ff;
+  color: #000;
+  font-weight: bold;
+}
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Frosted glass card */
+.card {
+  width: 335px;
+  max-width: 96vw;
+  margin: 14px auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 4px 22px rgba(0,0,0,0.45);
+}
+
+/* ============================================
+   DIAL + GRADIENT GLOW RING
+   ============================================ */
+.dial-container {
+  width: 260px;
+  height: 260px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.dial-ring {
+  width: 260px;
+  height: 260px;
+  position: absolute;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 120deg,
+    rgba(0,200,255,0.25) 0deg,
+    rgba(0,200,255,0.7) 140deg,
+    rgba(255,150,80,0.7) 260deg,
+    rgba(255,80,60,0.45) 300deg,
+    rgba(0,200,255,0.25) 360deg
+  );
+  filter: blur(22px) brightness(1.4);
+  transition: 0.5s ease;
+}
+
+.dial {
+  width: 200px;
+  height: 200px;
+  margin: 30px auto 0 auto;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 0 24px rgba(0,0,0,0.6);
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dial-indicator {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 4px;
+  height: 80px;
+  border-radius: 999px;
+  background: #9ee6ff;
+  transform-origin: 50% 100%;
+  box-shadow: 0 0 14px #9ee6ff;
+}
+
+.dial-value {
+  position: absolute;
+  top: 56%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2.6rem;
+  font-weight: bold;
+  text-shadow: 0 0 14px rgba(158,230,255,0.6);
+}
+
+.temp-live {
+  margin-top: 8px;
+  font-size: 1rem;
+}
+
+/* Buttons */
+.dial-controls {
+  display: flex;
+  justify-content: center;
+  gap: 34px;
+  margin-top: 12px;
+}
+.btn-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 1.7rem;
+  border: none;
+  cursor: pointer;
+}
+.btn-circle:active { transform: scale(0.92); }
+
+/* Status + override */
+.status {
+  margin-top: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+}
+.status.on { color: #87ffb2; }
+.status.off { color: #616161; }
+
+#overrideBtn {
+  margin-top: 12px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  cursor: pointer;
+}
+#overrideBtn.active { background: #ff6464; }
+
+.small { font-size: 0.8rem; opacity: 0.6; }
+
+/* ============================================
+   AI GRAPH
+   ============================================ */
+.ai-graph {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 160px;
+  margin-top: 10px;
+}
+.ai-bar {
+  width: 12px;
+  margin: 0 2px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  position: relative;
+}
+.ai-bar-inner {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(180deg,#a2efff,#ffddb8,#ffb480);
+  border-radius: 4px;
+  box-shadow: 0 0 10px #bfffef;
+}
+.ai-bar-label {
+  position: absolute;
+  bottom: -14px;
+  width: 100%;
+  font-size: 0.6rem;
+  color: #c7f3ff;
+  opacity: 0.7;
+  text-align: center;
+}
+
+/* ============================================
+   SCHEDULE GRID
+   ============================================ */
+.schedule-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.schedule-label {
+  width: 36px;
+  text-align: right;
+  margin-right: 4px;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.schedule-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  margin: 1px;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.schedule-cell.on {
+  background: #7fff9f;
+  box-shadow: 0 0 6px #7fff9f;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Heating MK1 – V4</h1>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab-btn active" data-panel="controlPanel">Control</button>
+  <button class="tab-btn" data-panel="aiPanel">AI</button>
+  <button class="tab-btn" data-panel="schedulePanel">Schedule</button>
+  <button class="tab-btn" data-panel="settingsPanel">Settings</button>
+</div>
+
+<!-- CONTROL PANEL -->
+<div id="controlPanel" class="panel active">
+  <div class="card">
+
+    <div class="dial-container">
+      <div class="dial-ring" id="dialRing"></div>
+      <div class="dial" id="dial">
+        <div class="dial-indicator" id="dialIndicator"></div>
+        <div class="dial-value" id="setpointDisplay">20°</div>
+      </div>
+    </div>
+
+    <div class="temp-live" id="tempDisplay">Temp: --°C</div>
+
+    <div class="dial-controls">
+      <button class="btn-circle" id="minusBtn">−</button>
+      <button class="btn-circle" id="plusBtn">+</button>
+    </div>
+
+    <div id="heatingStatus" class="status off">Heating: OFF</div>
+
+    <button id="overrideBtn">Use Set Temp</button>
+
+    <div class="small" id="mqttStatus">MQTT: Connecting…</div>
+  </div>
+</div>
+
+<!-- AI PANEL -->
+<div id="aiPanel" class="panel">
+  <div class="card">
+    <h2>Comfort Prediction</h2>
+    <p id="aiSummary">Learning your behaviour…</p>
+    <div class="ai-graph" id="aiGraph"></div>
+    <p id="aiTip"></p>
+  </div>
+</div>
+
+<!-- SCHEDULE PANEL -->
+<div id="schedulePanel" class="panel">
+  <div class="card">
+    <h2>Schedule</h2>
+    <p class="small">Tap hours to toggle. Green = ON.</p>
+    <div id="scheduleGrid"></div>
+    <button id="saveScheduleBtn">Save Schedule</button>
+    <div id="scheduleStatus" class="small"></div>
+  </div>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div id="settingsPanel" class="panel">
+  <div class="card">
+    <h2>Settings</h2>
+    <button id="installBtn">Install App</button>
+    <p class="small">PWA enabled</p>
+  </div>
+</div>
+
+<script>
+/* ================================
+   TAB SWITCHING
+   ================================ */
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.onclick=()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.panel).classList.add("active");
+  };
+});
+
+/* ================================
+   DIAL LOGIC
+   ================================ */
+let setpoint = 20;
+const MIN_TEMP = 10, MAX_TEMP = 30;
+
+const dial = document.getElementById("dial");
+const dialIndicator = document.getElementById("dialIndicator");
+const setpointDisplay = document.getElementById("setpointDisplay");
+const dialRing = document.getElementById("dialRing");
+
+function updateUI(){
+  setpointDisplay.textContent = setpoint.toFixed(1)+"°";
+
+  const ratio = (setpoint - MIN_TEMP) / (MAX_TEMP - MIN_TEMP);
+  const angle = 135 + ratio * 270;
+
+  dialIndicator.style.transform =
+    "translateX(-50%) rotate("+angle+"deg)";
+
+  dialRing.style.filter =
+    heatingOn ? "blur(26px) brightness(1.7)" :
+                "blur(22px) brightness(1.3)";
+}
+
+document.getElementById("minusBtn").onclick=()=>{
+  setpoint=Math.max(MIN_TEMP,setpoint-0.5);
+  updateUI();
+  mqttPublish("thermostat/cmd/setpoint",String(setpoint));
+};
+
+document.getElementById("plusBtn").onclick=()=>{
+  setpoint=Math.min(MAX_TEMP,setpoint+0.5);
+  updateUI();
+  mqttPublish("thermostat/cmd/setpoint",String(setpoint));
+};
+
+/* Dial twist physics */
+let dragging=false;
+dial.onpointerdown=e=>{ dragging=true; dial.setPointerCapture(e.pointerId); };
+dial.onpointerup=e=>{ dragging=false; };
+dial.onpointermove=e=>{
+  if(!dragging) return;
+
+  const r=dial.getBoundingClientRect();
+  const cx=r.left+r.width/2;
+  const cy=r.top+r.height/2;
+
+  const dx=e.clientX-cx;
+  const dy=e.clientY-cy;
+
+  let ang=Math.atan2(dy,dx)*(180/Math.PI);
+  if(ang<0) ang+=360;
+
+  if(ang<135) ang=135;
+  if(ang>405) ang=405;
+
+  const t=(ang-135)/270;
+  setpoint=MIN_TEMP+t*(MAX_TEMP-MIN_TEMP);
+
+  updateUI();
+  mqttPublish("thermostat/cmd/setpoint",String(setpoint));
+};
+
+/* ================================
+   MQTT — PUBLIC BROKER (NO LOGIN)
+   ================================ */
+const mqttStatus=document.getElementById("mqttStatus");
+const tempDisplay=document.getElementById("tempDisplay");
+const heatingStatus=document.getElementById("heatingStatus");
+
+let heatingOn=false;
+
+const clientId="MK1_V4_"+Math.random().toString(16).substr(2,6);
+
+const client=mqtt.connect("ws://broker.hivemq.com:8000/mqtt",{
+  clientId,
+  clean:true,
+  reconnectPeriod:2000
+});
+
+client.on("connect",()=>{
+  mqttStatus.textContent="MQTT: Connected ✔";
+
+  client.subscribe("thermostat/state/temp");
+  client.subscribe("thermostat/state/heating");
+  client.subscribe("thermostat/state/setpoint");
+});
+
+client.on("message",(topic,payload)=>{
+  const msg=payload.toString();
+
+  if(topic==="thermostat/state/temp"){
+    tempDisplay.textContent="Temp: "+msg+"°C";
+  }
+
+  if(topic==="thermostat/state/setpoint"){
+    const sp=parseFloat(msg);
+    if(!isNaN(sp)){ setpoint=sp; updateUI(); }
+  }
+
+  if(topic==="thermostat/state/heating"){
+    heatingOn=(msg==="1");
+    heatingStatus.textContent="Heating: "+(heatingOn?"ON":"OFF");
+    heatingStatus.classList.toggle("on",heatingOn);
+    heatingStatus.classList.toggle("off",!heatingOn);
+    updateUI();
+    sampleAI(heatingOn);
+  }
+});
+
+function mqttPublish(topic,msg){
+  if(client.connected) client.publish(topic,msg);
+}
+
+/* ================================
+   OVERRIDE
+   ================================ */
+let override=false;
+const overrideBtn=document.getElementById("overrideBtn");
+
+overrideBtn.onclick=()=>{
+  override=!override;
+  overrideBtn.classList.toggle("active",override);
+  overrideBtn.textContent=override?"Override: Heating ON":"Use Set Temp";
+  mqttPublish("thermostat/cmd/override",override?"1":"0");
+};
+
+/* ================================
+   SCHEDULE
+   ================================ */
+const schedule={};
+["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d=>{
+  schedule[d]=new Array(24).fill(false);
+});
+const scheduleGrid=document.getElementById("scheduleGrid");
+const scheduleStatus=document.getElementById("scheduleStatus");
+
+function buildSchedule(){
+  scheduleGrid.innerHTML="";
+  for(const day in schedule){
+    const row=document.createElement("div");
+    row.className="schedule-row";
+
+    const label=document.createElement("div");
+    label.className="schedule-label";
+    label.textContent=day;
+    row.appendChild(label);
+
+    for(let h=0;h<24;h++){
+      const cell=document.createElement("div");
+      cell.className="schedule-cell";
+      cell.dataset.day=day;
+      cell.dataset.hour=h;
+
+      cell.onclick=()=>{
+        schedule[day][h]=!schedule[day][h];
+        cell.classList.toggle("on",schedule[day][h]);
+      }
+
+      row.appendChild(cell);
+    }
+
+    scheduleGrid.appendChild(row);
+  }
+}
+buildSchedule();
+
+document.getElementById("saveScheduleBtn").onclick=()=>{
+  mqttPublish("thermostat/cmd/schedule_json",JSON.stringify(schedule));
+  scheduleStatus.textContent="Schedule sent ✔";
+};
+
+/* ================================
+   AI COMFORT ENGINE
+   ================================ */
+let aiStats=new Array(24).fill(0);
+let aiTotal=new Array(24).fill(0);
+
+const aiGraph=document.getElementById("aiGraph");
+const aiSummary=document.getElementById("aiSummary");
+const aiTip=document.getElementById("aiTip");
+
+function sampleAI(on){
+  const h=new Date().getHours();
+  aiTotal[h]++;
+  if(on) aiStats[h]++;
+  renderAI();
+}
+
+function renderAI(){
+  aiGraph.innerHTML="";
+
+  let bestHour=0, bestPct=0, totalOn=0, totalSamples=0;
+
+  for(let h=0;h<24;h++){
+    const pct=aiTotal[h]?(aiStats[h]/aiTotal[h]):0;
+    totalOn+=aiStats[h];
+    totalSamples+=aiTotal[h];
+
+    const bar=document.createElement("div");
+    bar.className="ai-bar";
+
+    const inner=document.createElement("div");
+    inner.className="ai-bar-inner";
+    inner.style.height=(pct*100)+"%";
+
+    const lbl=document.createElement("div");
+    lbl.className="ai-bar-label";
+    lbl.textContent=h;
+
+    bar.appendChild(inner);
+    bar.appendChild(lbl);
+    aiGraph.appendChild(bar);
+
+    if(pct>bestPct){
+      bestPct=pct;
+      bestHour=h;
+    }
+  }
+
+  if(totalSamples<5){
+    aiSummary.textContent="Learning…";
+    aiTip.textContent="";
+    return;
+  }
+
+  const overall=Math.round((totalOn/totalSamples)*100);
+  aiSummary.textContent="Heating active ~"+overall+"% of the time.";
+  aiTip.textContent="Most comfort needed around "+bestHour+":00.";
+}
+
+/* ================================
+   PWA INSTALL
+   ================================ */
+let deferredPrompt=null;
+
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  document.getElementById("installBtn").style.display="block";
+});
+
+document.getElementById("installBtn").onclick=()=>{
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt=null;
+  }
+};
+</script>
+
+</body>
+</html>
